@@ -48,6 +48,24 @@ flowchart LR
 		Teams --> User
 ```
 
+## 组件职责
+
+| 组件 | 作用 | 不负责的内容 |
+| --- | --- | --- |
+| Microsoft Teams | 提供个人聊天、群聊和团队频道入口，展示文本与 Adaptive Card | 不运行 Bot 或 AI 推理代码 |
+| Teams 应用 manifest | 声明应用名称、Bot ID、可用范围和有效域名，供 Teams 安装与识别应用 | 不托管服务，也不处理消息 |
+| Azure Bot Service | 注册 Microsoft Teams channel，将 Teams Activity 转发到 `/api/messages`，并把 Bot 回复送回 Teams | 不运行本仓库的 Python 代码，不调用 Databricks |
+| Azure App Service | 托管 Python Bot，提供公网 HTTPS 消息端点，负责日志、扩缩容和运行时环境 | 不执行模型推理或 SQL 查询 |
+| Python Bot | 验证和处理 Bot Framework Activity，将 Teams 消息转换为 Databricks 请求，并将结果转换为 Teams 回复 | 不负责生成 SQL 或访问底层数据表 |
+| Azure Bot 用户分配托管身份 | 供 App Service 上的 Bot Framework 验证 Azure Bot/Teams 消息链路 | 当前不作为 Databricks 查询身份 |
+| Databricks 服务主体 | 通过 OAuth M2M 获取短期令牌，以共享应用身份访问授权的 Genie、Warehouse 和数据表 | 不代表单个 Teams 用户，不能提供用户级数据隔离 |
+| Databricks Genie Space | 理解自然语言问题，基于 Space 指令和已授权数据生成查询并组织答案 | 不承载 Teams 消息入口 |
+| Serverless SQL Warehouse | 执行 Genie 生成的 SQL，提供查询计算资源 | 不理解自然语言或管理 Teams 会话 |
+| Unity Catalog | 管理 catalog、schema、数据表及其访问权限，提供受治理的数据来源 | 不执行 Bot 或 Agent 逻辑 |
+
+Azure Bot Service 是消息路由和 channel 注册资源，App Service 才是实际运行 Python Bot 的计算平台。删除或停止 App Service 后，即使 Azure Bot 和 Teams 应用仍然存在，也没有服务处理 `/api/messages` 请求。
+
+
 ## 一次问答的流程
 
 ```mermaid
