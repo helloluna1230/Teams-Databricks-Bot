@@ -5,3 +5,5 @@ __pycache__
 .env
 .env.local
 *.log
+.azure/
+teams-databricks-agent.zip

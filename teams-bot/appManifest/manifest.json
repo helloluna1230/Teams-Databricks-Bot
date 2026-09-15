@@ -2,7 +2,7 @@
   "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.19/MicrosoftTeams.schema.json",
   "manifestVersion": "1.19",
   "version": "1.0.0",
-  "id": "<app_id>",
+  "id": "5e475f35-1f84-4e59-ae75-eeb1d93460e9",
   "developer": {
     "name": "Databricks, inc",
     "websiteUrl": "https://www.databricks.com/",
@@ -10,12 +10,12 @@
     "termsOfUseUrl": "https://www.databricks.com/"
   },
   "name": {
-    "short": "Teams-Databricks Auth OBO",
-    "full": "Teams-Databricks Auth On Behalf Of The User"
+    "short": "Teams Databricks Agent",
+    "full": "Teams Databricks Agent Demo"
   },
   "description": {
-    "short": "Demonstrates authorization in Teams against Databricks agent using OOB.",
-    "full": "Demonstrates authorization in Teams against Databricks agent using Authentication On Behalf Of The User."
+    "short": "Chat with a Databricks agent from Microsoft Teams.",
+    "full": "Demonstrates a Microsoft Teams bot calling a Databricks agent with an Azure managed identity."
   },
   "icons": {
     "outline": "outline.png",
@@ -24,9 +24,10 @@
   "accentColor": "#abcdef",
   "bots": [
     {
-      "botId": "<app_id>",
+      "botId": "5e475f35-1f84-4e59-ae75-eeb1d93460e9",
       "scopes": [
         "team",
+        "groupChat",
         "personal"
       ],
       "isNotificationOnly": false,
@@ -40,7 +41,6 @@
     "messageTeamMembers"
   ],
   "validDomains": [
-    "<web_app_domain>",
-    "token.botframework.com"
+    "botservicedatabricks-app.azurewebsites.net"
   ]
 }

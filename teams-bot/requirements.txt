@@ -1,5 +1,5 @@
 botbuilder-integration-aiohttp>=4.17.0
 botbuilder-dialogs>=4.16.2
+azure-identity>=1.17.0
 databricks-sdk[openai]==0.58.0
-httpx
 databricks-ai-bridge

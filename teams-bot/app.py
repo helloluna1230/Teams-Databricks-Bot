@@ -67,10 +67,15 @@ USER_STATE = UserState(MEMORY)
 CONVERSATION_STATE = ConversationState(MEMORY)
 
 # Create dialog instance
-DIALOG = MainDialog(CONFIG.CONNECTION_NAME,
-                    CONFIG.DATABRICKS_HOST,
+DIALOG = MainDialog(CONFIG.DATABRICKS_HOST,
+                    CONFIG.DATABRICKS_TOKEN,
+                    CONFIG.DATABRICKS_AUTH_TYPE,
+                    CONFIG.DATABRICKS_CLIENT_ID,
+                    CONFIG.DATABRICKS_CLIENT_SECRET,
+                    CONFIG.DATABRICKS_AZURE_RESOURCE_ID,
+                    CONFIG.DATABRICKS_AZURE_CLIENT_ID,
                     CONFIG.SERVING_ENDPOINT_NAME,
-                    USER_STATE,
+                    CONFIG.GENIE_SPACE_ID,
                     CONVERSATION_STATE)
 
 # Create the main bot instance

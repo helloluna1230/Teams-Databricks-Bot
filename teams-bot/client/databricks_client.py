@@ -1,34 +1,75 @@
 # Copyright © Databricks, Inc. All rights reserved.
 # Licensed under the MIT License.
 
+import asyncio
 import logging
 import uuid
 
-import httpx
+from azure.identity import ManagedIdentityCredential
 from databricks.sdk import WorkspaceClient
+from databricks.sdk.core import Config
 from databricks_ai_bridge.genie import Genie
 
+
+DATABRICKS_AZURE_SCOPE = "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d/.default"
+
 class DatabricksClient:
-    def __init__(self, databricks_host: str, request_timeout: float = 300):
+    def __init__(self, databricks_host: str, token: str, auth_type: str,
+                 client_id: str, client_secret: str,
+                 azure_workspace_resource_id: str,
+                 azure_client_id: str):
         self.databricks_host = databricks_host
-        self.client = httpx.AsyncClient(
-            timeout=httpx.Timeout(request_timeout),
-        )
+        self.token = token
+        self.auth_type = auth_type
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.azure_workspace_resource_id = azure_workspace_resource_id
+        self.azure_client_id = azure_client_id
+        self.workspace_client = None
+        self.managed_identity_credential = None
 
-    async def exchange_token(self, provider_oauth_token: str):
+        if auth_type == "azure-managed-identity-oauth":
+            self.managed_identity_credential = ManagedIdentityCredential(
+                client_id=azure_client_id
+            )
 
-        url = f"{self.databricks_host}/oidc/v1/token"
+    def _get_workspace_client(self):
+        if self.managed_identity_credential:
+            access_token = self.managed_identity_credential.get_token(
+                DATABRICKS_AZURE_SCOPE
+            )
+            return WorkspaceClient(
+                config=Config(
+                    host=self.databricks_host,
+                    token=access_token.token,
+                    auth_type="pat",
+                )
+            )
 
-        data = {
-            "subject_token": provider_oauth_token,  # replace with your JWT token variable
-            "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
-            "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
-            "scope": "all-apis"
-        }
-
-        response = await self.client.post(url, data=data)
-
-        return response.json()['access_token']
+        if self.workspace_client is None:
+            if self.auth_type == "oauth-m2m":
+                config = Config(
+                    host=self.databricks_host,
+                    client_id=self.client_id,
+                    client_secret=self.client_secret,
+                    auth_type="oauth-m2m",
+                )
+            elif self.token:
+                config = Config(
+                    host=self.databricks_host,
+                    token=self.token,
+                    auth_type="pat",
+                )
+            else:
+                config = Config(
+                    host=self.databricks_host,
+                    azure_workspace_resource_id=self.azure_workspace_resource_id,
+                    azure_client_id=self.azure_client_id,
+                    azure_use_msi=True,
+                    auth_type="azure-msi",
+                )
+            self.workspace_client = WorkspaceClient(config=config)
+        return self.workspace_client
 
     def _throw_unexpected_endpoint_format(self):
         raise Exception("This app can only run against ChatModel, ChatAgent, or ResponsesAgent endpoints")
@@ -161,13 +202,8 @@ class DatabricksClient:
     async def call_model_endpoint(self,
                                   serving_endpoint_name: str,
                                   text:str,
-                                  provider_oauth_token: str,
                                   history:list):
-
-        oauth_db_token = await self.exchange_token(provider_oauth_token)
-
-        workspace_client = WorkspaceClient(host=self.databricks_host, token=oauth_db_token)
-
+        workspace_client = self._get_workspace_client()
         task_type = self._get_endpoint_task_type(workspace_client, serving_endpoint_name)
 
         logging.info(f"Serving endpoint task type: {task_type}")
@@ -184,16 +220,18 @@ class DatabricksClient:
         return result_messages
 
     async def call_genie_space(self, question: str,
-                               provider_oauth_token:str,
-                               conversation_id: str,
-                               genie_space_id: str):
-
-        oauth_db_token = await self.exchange_token(provider_oauth_token)
-
-        workspace_client = WorkspaceClient(host=self.databricks_host, token=oauth_db_token)
-
-        genie = Genie(genie_space_id, workspace_client)
-
-        genie_result = genie.ask_question(question, conversation_id)
-
-        return genie_result.result
+                               genie_space_id: str) -> list:
+        message = await asyncio.to_thread(
+            self._get_workspace_client().genie.start_conversation_and_wait,
+            genie_space_id,
+            question,
+        )
+        answers = [
+            attachment.text.content
+            for attachment in message.attachments or []
+            if attachment.text
+            and attachment.text.content
+        ]
+        if not answers:
+            raise Exception("Genie completed without an answer attachment")
+        return [{"role": "assistant", "content": "\n\n".join(answers)}]
