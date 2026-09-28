@@ -142,36 +142,158 @@ SELECT * FROM samples.nyctaxi.trips;
 
 ### 4. 创建 Databricks 服务主体
 
-1. 创建或选择 Databricks service principal。
-2. 生成 OAuth M2M secret。
-3. 授予：
+通过工作区管理页面创建或选择 Databricks service principal：
+
+1. 使用 Workspace admin 账号登录 Azure Databricks 工作区。
+2. 单击右上角用户名，选择 **Settings**。
+3. 进入 **Identity and access**。
+4. 在 **Service principals** 旁单击 **Manage**。
+5. 单击 **Add service principal**。
+6. 根据实际情况选择：
+   - 已有 service principal：从列表中选择，配置所需的 workspace entitlements，然后单击 **Add**。
+   - 新建 service principal：单击 **Add new**，选择 **Databricks managed**，输入名称，然后单击 **Add**。
+
+为新建的 Databricks-managed service principal 生成 OAuth M2M secret：
+
+1. 在 **Service principals** 页面选择刚创建的 service principal。
+2. 打开 **Secrets**，单击 **Generate secret**。
+3. 设置有效期，并仅选择应用所需的 API scopes。
+4. 单击 **Generate**，立即复制并安全保存 client ID 和 secret。
+
+为 service principal 授予以下最小权限：
 
 | 对象 | 最小权限 |
 | --- | --- |
 | Genie Space | `CAN RUN` |
-| SQL Warehouse | `CAN USE` |
 | Catalog | `USE CATALOG` |
 | Schema | `USE SCHEMA` |
 | 表 | `SELECT` |
+
+具体操作：
+
+1. 授予 Genie Space 权限：
+   1. 打开前面创建的 Genie Space。
+   2. 单击右上角 **Share**。
+   3. 搜索并添加 service principal。
+   4. 将权限设置为 **Can run**，然后保存。
+2. 授予 Unity Catalog 数据权限：
+   1. 打开 **SQL Editor**，选择一个可用的 SQL Warehouse。
+   2. 使用具有对象所有者、`MANAGE` 或 metastore admin 权限的账号执行以下语句，将占位符替换为 service principal 的 application ID：
+
+      ```sql
+      GRANT USE CATALOG ON CATALOG databricksdemo
+      TO `<service-principal-application-id>`;
+
+      GRANT USE SCHEMA ON SCHEMA databricksdemo.default
+      TO `<service-principal-application-id>`;
+
+      GRANT SELECT ON TABLE databricksdemo.default.nyctaxi_trips
+      TO `<service-principal-application-id>`;
+      ```
+
+3. Genie 使用配置者嵌入的 SQL Warehouse 凭据执行查询，因此调用 Genie 的 service principal 不需要 SQL Warehouse 的 `CAN USE` 权限。配置 Genie Space 所用 Warehouse 的用户必须具有 `CAN USE`。如果 service principal 还需要绕过 Genie 直接执行 SQL，则打开 **SQL Warehouses**，在目标 Warehouse 的菜单中选择 **Permissions**，添加该 service principal，并授予 **Can use**。
+
+如果在 **Share** 或 **Permissions** 中搜索不到 service principal，请先确认它已添加到当前 workspace。
 
 OAuth secret 只在创建时显示一次。不要写入代码、Git、README、Teams 消息或聊天记录。
 
 ### 5. 创建 Azure Bot 和 App Service
 
-1. 创建 Azure Bot，启用 Microsoft Teams channel。
-2. 创建 Linux App Service，Python 3.13，B1 或更高规格。
-3. 将 Bot 的用户分配托管身份附加到 App Service。
-4. 将 Azure Bot messaging endpoint 设置为：
+#### 5.1 创建 Azure Bot 并启用 Microsoft Teams channel
+
+1. 登录 [Azure Portal](https://portal.azure.com)，搜索并打开 **Azure Bot**，然后单击 **Create**。
+2. 在创建页面中填写：
+   - **Bot handle**：全局唯一的 Bot 资源名称。
+   - **Subscription** 和 **Resource group**：选择本项目使用的订阅和资源组。
+   - **Pricing tier**：开发或演示环境可选择 `F0`；如果订阅中无法再创建 `F0`，请选择 `S1`。
+   - **Type of App**：选择 **User-Assigned Managed Identity**。
+3. 在身份选择区域新建或选择一个 user-assigned managed identity。后续 Azure Bot 和 App Service 使用这个身份。
+4. 单击 **Review + create**，验证通过后单击 **Create**。
+5. 部署完成后打开该 Azure Bot，记录其 user-assigned managed identity 的以下值：
+   - **Client ID**：后续用作 `MicrosoftAppId`。
+   - **Resource ID**：用于确认和附加正确的托管身份。
+   - **Tenant ID**：后续用作 `MicrosoftTenantId`。
+6. 在 Azure Bot 左侧菜单中打开 **Channels**。
+7. 选择 **Microsoft Teams**，接受服务条款，根据组织策略选择商业版 Teams，然后单击 **Apply** 或 **Save**。
+8. 确认 Microsoft Teams channel 的状态为 `Succeeded`。
+
+Azure Bot 和 App Service 必须使用同一个 user-assigned managed identity。当前主流程使用第 4 节创建的独立 Databricks-managed service principal 和 OAuth M2M secret 访问 Databricks，因此 Databricks service principal 的 Client ID 与 Azure Bot 托管身份的 Client ID 不需要相同。
+
+#### 5.2 创建 Linux App Service
+
+1. 在 Azure Portal 中搜索并打开 **App Services**，单击 **Create** > **Web App**。
+2. 在 **Basics** 页面填写：
+   - **Subscription** 和 **Resource group**：建议与 Azure Bot 相同。
+   - **Name**：输入全局唯一的名称，例如 `botservicedatabricks-app`。该名称会成为默认域名的一部分。
+   - **Publish**：选择 **Code**。
+   - **Runtime stack**：选择 **Python 3.13**。
+   - **Operating System**：选择 **Linux**。
+   - **Region**：选择靠近用户且符合数据驻留要求的区域。
+3. 创建或选择 App Service plan：
+   - **Linux Plan**：可新建一个计划。
+   - **Pricing plan**：选择 `B1` 或更高规格。`F1` 等共享层不适合持续运行的生产 Bot。
+4. 其他设置暂时保持默认，单击 **Review + create**。
+5. 验证通过后单击 **Create**。部署完成后打开 App Service，并确认 **Overview** 页面中的状态为 `Running`。
+6. 记录 App Service 的 **Default domain**，通常为：
+
+   ```text
+   https://<app-service-name>.azurewebsites.net
+   ```
+
+此时只创建了运行环境，项目代码将在后续部署步骤中上传。
+
+#### 5.3 将 Azure Bot 的用户分配托管身份附加到 App Service
+
+1. 打开刚创建的 App Service。
+2. 在左侧菜单中选择 **Settings** > **Identity**。
+3. 打开 **User assigned** 选项卡，单击 **Add**。
+4. 选择 Azure Bot 创建时使用的同一个 user-assigned managed identity，然后单击 **Add**。
+5. 刷新页面，确认该身份出现在 **User assigned** 列表中。
+6. 打开该身份并再次核对 **Client ID**。它必须与 Azure Bot 使用的 Microsoft App ID 一致。
+
+仅创建 Azure Bot 身份并不会自动将它附加到 App Service。缺少这一步时，Python Bot 无法以 `UserAssignedMSI` 身份完成 Bot Framework 身份验证。
+
+#### 5.4 配置 Azure Bot messaging endpoint
+
+1. 确认 App Service 已创建，并记下其默认域名。
+2. 返回 Azure Bot 资源。
+3. 在左侧菜单中打开 **Settings** > **Configuration**。
+4. 将 **Messaging endpoint** 设置为：
+
+```text
+https://<app-service-name>.azurewebsites.net/api/messages
+```
+
+例如，本项目示例为：
 
 ```text
 https://botservicedatabricks-app.azurewebsites.net/api/messages
 ```
 
-5. App Service 启动命令设置为：
+5. 单击 **Apply** 或 **Save**。
+
+Messaging endpoint 必须使用公网 HTTPS 地址，并以 `/api/messages` 结尾。不要填写 App Service 的 SCM/Kudu 地址，也不要在结尾额外添加 `/`。
+
+#### 5.5 配置 App Service 启动命令
+
+1. 打开 App Service。
+2. 在左侧菜单中选择 **Settings** > **Configuration**，然后打开 **General settings**。
+3. 确认 Stack settings 中的运行时为 **Python 3.13**。
+4. 在 **Startup Command** 中输入：
 
 ```text
 python3 app.py
 ```
+
+5. 单击 **Save**，确认后等待 App Service 重启。
+
+该命令假设后续部署时将 `teams-bot/` 目录中的内容部署到 App Service 应用根目录，使 `app.py` 位于 `/home/site/wwwroot/app.py`。如果部署的是整个仓库而不是 `teams-bot/` 目录，则启动命令应改为：
+
+```text
+python3 teams-bot/app.py
+```
+
+应用启动后监听 `0.0.0.0:8000`。完成代码部署和第 6 节的环境变量配置后，可以在 **Monitoring** > **Log stream** 中确认应用成功启动。直接在浏览器中访问 `/api/messages` 返回 `405 Method Not Allowed` 属于正常现象，因为该端点只接受 Bot Framework 发出的 `POST` 请求。
 
 ### 6. 配置 App Service 环境变量
 
@@ -323,3 +445,5 @@ teams-databricks-bot-service/
 │   └── appManifest/         # Teams manifest 和图标
 └── README.md                # 本说明文档
 ```
+# 参考文档
+https://learn.microsoft.com/zh-cn/azure/databricks/agents/custom-agents/teams-agent
