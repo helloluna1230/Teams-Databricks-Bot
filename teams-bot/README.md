@@ -4,9 +4,9 @@
 
 ## 当前状态
 
-截至 **2026-10-12**，Microsoft 365 Agents SDK **1.8.0** 迁移、App Service 部署和 Teams 客户端问答均已验证通过。线上使用 Python 3.13，本地 Python 3.12 环境中的 **27 项测试通过**。Demo 的行程数量问题返回 **21,932**；结果与部署记录见[主 README](../README.md#最新验证状态)。
+截至 **2026-10-12**，使用 Microsoft 365 Agents SDK **1.8.0** 的 App Service 部署和 Teams 客户端问答均已验证通过。线上使用 Python 3.13，本地 Python 3.12 环境中的 **27 项测试通过**。Demo 的行程数量问题返回 **21,932**；结果与部署记录见[主 README](../README.md#当前-demo-问答结果)。
 
-本次迁移保留现有 Azure Bot、Bot ID、托管身份和 Databricks M2M 方案。迁移后的旧 Dialog、OAuth 调度和 `botbuilder-*` 依赖已移除；仅处理通用消息与成员加入事件，不需要旧 Teams 扩展包。
+当前使用 SDK 的通用 `ActivityHandler` 处理消息与成员加入事件，Bot 认证采用用户分配托管身份，Databricks 认证采用独立的 OAuth M2M 服务主体。
 
 ## 默认认证与请求链路
 
@@ -14,16 +14,16 @@
 Teams → Azure Bot → App Service Python Bot → Databricks Genie
 ```
 
-- **Teams / Bot 身份**：Azure Bot 与 App Service 使用同一个用户分配托管身份。Azure Bot 资源类型仍为 `UserAssignedMSI`，Microsoft 365 Agents SDK 认证类型为 `UserManagedIdentity`。入站消息由 JWT 中间件验证。
+- **Teams / Bot 身份**：Azure Bot 与 App Service 使用同一个用户分配托管身份。Azure Bot 资源类型为 `UserAssignedMSI`，Microsoft 365 Agents SDK 认证类型为 `UserManagedIdentity`。入站消息由 JWT 中间件验证。
 - **Databricks 身份**：独立 Databricks 服务主体通过 OAuth M2M 获取令牌，不使用上述托管身份或 Teams 用户身份。
 - 所有获准使用 Bot 的用户共享该服务主体的数据权限和审计身份。跨租户 Teams 安装仍需单独验证，M2M 认证本身不保证应用在其他租户可用。
 
 ## 必需配置
 
-在 App Service 应用设置中填写实际值；下面是配置模板，不应将真实 secret 写入文件或命令历史。
+在 App Service 应用设置中填写实际值；下面是配置模板，`<botid>` 与主 README 的 Bot Microsoft App ID 占位符一致。请替换所有 `<...>`，不要保留尖括号，不应将真实 secret 写入文件或命令历史。
 
 ```text
-CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID=<azure-bot-managed-identity-client-id>
+CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID=<botid>
 CONNECTIONS__SERVICE_CONNECTION__SETTINGS__AUTHTYPE=UserManagedIdentity
 DATABRICKS_HOST=https://<workspace-host>
 DATABRICKS_AUTH_TYPE=oauth-m2m
@@ -35,9 +35,9 @@ SCM_DO_BUILD_DURING_DEPLOYMENT=True
 
 service connection 的 `CLIENTID` 必须与 Azure Bot 的 Microsoft App ID、附加身份的 Client ID 及 [manifest](appManifest/manifest.json) 中的 `bots[].botId` 一致。`DATABRICKS_CLIENT_ID` 属于另一套身份。
 
-旧 `MicrosoftApp*` 和 `MicrosoftTenantId` 变量不再用于新 SDK 认证；缺少新 service connection 的 `CLIENTID` / `AUTHTYPE` 会导致启动失败。生产环境禁止 `ANONYMOUS_ALLOWED=True`。
+缺少 service connection 的 `CLIENTID` / `AUTHTYPE` 会导致启动失败。生产环境禁止 `ANONYMOUS_ALLOWED=True`。
 
-当前方案不需要 `ConnectionName`、`DATABRICKS_TOKEN` 或 `DATABRICKS_AZURE_*` 设置。Databricks 客户端保留 PAT 和 Azure 托管身份兼容路径，但这些不是本文的默认部署方案；尤其不能遗漏 `DATABRICKS_AUTH_TYPE=oauth-m2m`。
+`DATABRICKS_AUTH_TYPE=oauth-m2m` 必须显式设置。Databricks 客户端保留 PAT 和 Azure 托管身份兼容路径，但这些不是本文的默认部署方案。
 
 配置了 `GENIE_SPACE_ID` 时优先调用 Genie。只有清空该值并设置 `SERVING_ENDPOINT_NAME` 才切换到 Model Serving；还需单独部署并授权 endpoint，以及验证下游资源身份，见[可选 Agent 说明](../databricks-agent/README.md)。
 
@@ -80,4 +80,4 @@ python -m pip check
 - 频道和群聊默认需要 @Bot，代码未显式移除 mention。
 - 长查询仍在 HTTP 请求内等待；线上 Direct Line 测试出现过超时后收到答案的情况，但没有保证最终回复的后台任务机制。
 
-这些限制不会因 SDK 替换自动消失。新环境或后续发布的升级、验证与排障步骤见[主 README](../README.md)。
+新环境或后续发布的配置、部署、验证与排障步骤见[主 README](../README.md)。

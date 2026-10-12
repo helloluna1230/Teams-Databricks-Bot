@@ -21,53 +21,35 @@ Teams 负责聊天入口，Azure Bot Service 负责转发消息，Azure App Serv
 | 数据治理 | Unity Catalog，按共享服务主体的数据权限查询 |
 | 回复形式 | Genie 文本答案；可选 Model Serving 路径支持文本和工具调用 Adaptive Card |
 
-### 最新验证状态
-
-**截至 2026-10-12，Agents SDK 迁移、App Service 更新、接口鉴权、Databricks 问答和 Teams 客户端端到端验证均已通过。**
-
-- App Service `botservicedatabricks-app` 已运行新 SDK 代码，保留原 Bot ID、用户分配托管身份和 Databricks OAuth M2M 配置。
-- `/` 的 GET 返回 `404`，`/api/messages` 的 GET 返回 `405`；缺少或无效 JWT 的消息 POST 返回 `401`。
-- 数据问题“数据集中一共有多少次行程？”得到 **21,932** 的结果。
-- 本地 **27 项测试通过**，并完成依赖兼容、Python 编译及部署包检查。本地测试使用 Python 3.12，线上使用 Python 3.13。
-- Direct Line 辅助测试中出现过同步等待超时 `502`，随后收到数据答案。问答链路已验证，但未增加持久化后台任务或最终投递保证。
-
-这是本次 Demo 的验证记录，不是所有环境、并发量和跨租户场景的保证；新部署仍需按本文重新验证。
-
-### 阅读导航
-
-- **复用已有 Demo**：直接在已安装的 Teams 应用中发送完整问题；频道 / 群聊默认需要 `@Bot`。只升级 SDK 且 Bot ID、域名和 scopes 不变时，无需重传 Teams 包。
-- **从零部署**：先确认[权限](#权限)，再按[部署步骤](#部署步骤)完成数据、身份、代码和 Teams 应用配置。
-- **升级旧版本**：参考[SDK 升级说明](#从旧-bot-framework-版本升级)，不要继续使用旧 `MicrosoftApp*` 设置启动新代码。
-- **开发与验证**：参考[验证清单](#验证清单)和 [Bot 开发说明](teams-bot/README.md)。
-- **排查问题**：参考[常见问题](#常见问题)；生产化前先了解[当前能力与限制](#当前能力与限制)。
-- **可选 Model Serving**：参考[自定义 Agent 说明](#当前主链路与自定义-agent)，不是默认 Genie 路径的前置步骤。
 
 ## 开始前
 
 - 准备可用的 Azure 订阅及资源组、启用 Unity Catalog 的 Databricks workspace、可用的 Pro 或 Serverless SQL Warehouse，以及可使用自定义应用的 Teams 账号。
-- 线上部署使用 Python 3.13；本地迁移测试已在 Python 3.12 验证。命令示例使用 Bash、Azure CLI 和 Python 的内置 ZIP 工具，无需额外安装打包依赖。
+- 线上部署使用 Python 3.13；命令示例使用 Bash、Azure CLI 和 Python 的内置 ZIP 工具。
 - 获取当前项目后，以项目根目录为起点执行本文命令；进入子目录的命令不应在同一个终端反复累加执行。
 - [原始上游示例](https://github.com/databricks-solutions/databricks-bot-service/tree/main/teams-bot) 使用用户 OAuth 登录和 token exchange。当前项目已修改为共享应用身份；仅复制上游示例并填写本文环境变量，不会自动获得当前行为。
 - 当前主链路只需部署 [`teams-bot`](teams-bot)。不要先运行 [`databricks-agent/deploy.py`](databricks-agent/deploy.py)；它是可选 Model Serving 示例，会创建独立资源。
 
 ## Demo 资源示例
 
-以下为本次已验证 Demo 的资源值，仅作参考。新部署请替换为自己的资源、ID 和域名；资源状态与费用以 Azure / Databricks 实际情况为准。
+为避免公开个人或环境信息，本文使用占位符，不列出真实订阅、身份、资源名称或地址。部署前请将 `<...>` 替换为自己的实际值，不要保留尖括号；同一占位符在全文代表同一个值。Shell 示例中的引号用于避免尖括号被解释为重定向。资源状态与费用以 Azure / Databricks 实际情况为准。
 
 | 资源 | Demo 示例值 | 用途 |
 | --- | --- | --- |
-| Azure 订阅 | `4c70bcd9-6988-4707-86d0-39ff8b491d3c` | 承载 Azure 资源 |
-| 资源组 | `databricksdemo-rg` | Demo 资源容器 |
-| Databricks workspace | `databricksdemo` | 数据、Genie 和模型服务 |
-| Azure Bot | `botservicedatabricks` | Teams channel 和消息转发 |
-| App Service | `botservicedatabricks-app` | 运行 Python Bot |
-| Bot Microsoft App ID / 托管身份 Client ID | `5e475f35-1f84-4e59-ae75-eeb1d93460e9` | SDK service connection 与 Teams `bots[].botId` 使用同一个值 |
-| App Service Plan | `yute_asp_2821`，Linux B1 | Bot 计算资源 |
-| Genie Space | `Teams NYC Taxi Data` | 自然语言问数 |
-| Genie Space ID | `01f1b0efb5c211b2b08b9571d261f0ef` | Bot 调用目标 |
-| SQL Warehouse | `Teams Demo SQL Warehouse` | 执行 Genie 生成的 SQL |
-| Warehouse ID | `eca894b403d9f424` | Genie 计算资源 |
-| 数据表 | `databricksdemo.default.nyctaxi_trips` | Demo 查询数据 |
+| Azure 订阅 | `<subid>` | 承载 Azure 资源 |
+| Azure 租户 | `<tenantid>` | Azure CLI 登录与身份所在租户 |
+| 资源组 | `<resource-group>` | Demo 资源容器 |
+| Databricks workspace | `<workspace-name>` | 数据、Genie 和模型服务 |
+| Databricks workspace URL | `https://<workspace-host>` | `DATABRICKS_HOST`，不带 `/api` |
+| Azure Bot | `<bot-name>` | Teams channel 和消息转发 |
+| App Service | `<app-service-name>` | 运行 Python Bot |
+| Bot Microsoft App ID / 托管身份 Client ID | `<botid>` | SDK service connection 与 Teams `bots[].botId` 使用同一个值 |
+| App Service Plan | `<app-service-plan-name>`，Linux B1 | Bot 计算资源 |
+| Genie Space | `<genie-space-name>` | 自然语言问数 |
+| Genie Space ID | `<genie-space-id>` | Bot 调用目标 |
+| SQL Warehouse | `<sql-warehouse-name>` | 执行 Genie 生成的 SQL |
+| Warehouse ID | `<sql-warehouse-id>` | Genie 计算资源 |
+| 数据表 | `<catalog>.<schema>.<table>` | Demo 查询数据 |
 
 App Service B1 会持续计费。SQL Warehouse 使用 Serverless `2X-Small`，空闲 10 分钟自动停止，使用和冷启动期间计费。
 
@@ -148,7 +130,7 @@ Genie 本身会重新创建会话，Teams 中发送“刚才那个结果呢？�
 
 - App Service 附加 Azure Bot 的用户分配托管身份。
 - Agents SDK 使用该身份获取 Bot 回复令牌，并通过 JWT 中间件验证发到 `/api/messages` 的请求。缺少或无效的 token 返回 `401`，不允许匿名访问。
-- Azure Bot 资源的类型仍为 `UserAssignedMSI`；Python SDK 中对应的认证配置值是 `UserManagedIdentity`，两者不要混淆。
+- Azure Bot 资源的类型为 `UserAssignedMSI`；Python SDK 中对应的认证配置值是 `UserManagedIdentity`，两者不要混淆。
 
 ### Bot 到 Databricks
 
@@ -157,29 +139,22 @@ Genie 本身会重新创建会话，Teams 中发送“刚才那个结果呢？�
 - 运行身份只获得 Genie Space 和指定数据表所需权限；仅调用 Genie 时不需要直接授予 Warehouse 的 `CAN USE`，详见第 4 节。
 - 不使用 Teams 用户身份，因此 Databricks 审计中显示共享服务主体，而不是每个 Teams 用户。
 
-此模式适合 Demo 和共享权限场景。Microsoft 365 Agents SDK 的 Python 托管身份认证使用 single-tenant 配置；已有 Teams 验证不代表支持任意其他租户。
+此模式适合 Demo 和共享权限场景。
 
-### 从旧 Bot Framework 版本升级
+### 当前 SDK 配置
 
-当前代码已迁移到 Microsoft 365 Agents SDK 1.8.0，保留 aiohttp、`POST /api/messages`、现有 Bot ID 和 Databricks 调用逻辑。使用 SDK 的通用 `ActivityHandler` 处理消息与成员加入事件；当前未使用 Teams 专有事件 API，不依赖已弃用的 `microsoft-agents-hosting-teams` 包。
+当前使用 **Microsoft 365 Agents SDK 1.8.0**，通过 aiohttp 提供 `POST /api/messages`，使用 `CloudAdapter` 和通用 `ActivityHandler` 处理消息与成员加入事件。
 
-1. Azure Bot、App Service、已附加的托管身份、Teams manifest 和 Databricks 服务主体可以保留；如果 ID、域名和 scopes 不变，不需要仅因 SDK 迁移重新上传 Teams 包。
-2. 部署新代码前，按第 6 节添加新 SDK 的 `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__*` 配置。下表是当前托管身份方案的映射：
+Bot 认证采用用户分配托管身份，App Service 中的 SDK 配置为：
 
-   | 原配置 | 新 SDK 配置 |
-   | --- | --- |
-   | `MicrosoftAppId` / `MicrosoftAppID` | `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID`，值仍是原托管身份 Client ID |
-   | `MicrosoftAppType=UserAssignedMSI` | `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__AUTHTYPE=UserManagedIdentity` |
-   | `MicrosoftTenantId` | 当前用户分配托管身份方案不需要此旧变量；保留租户信息用于资源管理 |
-   | `MicrosoftAppPassword` | 当前托管身份方案不需要 Bot client secret |
+```text
+CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID=<botid>
+CONNECTIONS__SERVICE_CONNECTION__SETTINGS__AUTHTYPE=UserManagedIdentity
+```
 
-3. 新代码不再读取 `MicrosoftAppId`、`MicrosoftAppID`、`MicrosoftAppType`、`MicrosoftTenantId` 或 `MicrosoftAppPassword`。只保留旧变量会导致新应用启动失败，而不是降级为匿名访问。
-4. 使用新依赖重新构建并部署代码，再验证 JWT 拒绝、个人聊天、频道 / 群聊以及 Databricks 问答。确认成功后可移除旧 Bot 配置；Databricks M2M 配置保持不变。
-5. 在自己的环境中执行真实问答验收。本地测试不验证 Azure 托管身份端点、线上 Genie 授权或跨租户可用性。
+`<botid>` 必须等于 Azure Bot 的 Microsoft App ID、App Service 已附加托管身份的 Client ID 和 Teams manifest 的 `bots[].botId`。该身份不需要 Bot client secret；Databricks 使用另一套 OAuth M2M client ID / secret。
 
-当前 Demo 已完成升级和 Teams 验证，Azure 端暂时保留旧 Bot 设置用于回滚；它们不会被新代码使用。回滚必须重新部署迁移前代码，并保留与之匹配的旧配置，而不是只切换认证变量。
-
-微软已归档旧 Bot Framework SDK。当前迁移移除了旧 `botbuilder-*` 依赖、Dialog 调度和用户 OAuth 残留，不同时引入新的多轮、持久化或长查询能力。
+完整环境变量模板和配置说明见[配置 App Service 环境变量](#6-配置-app-service-环境变量)，资源创建、身份附加和部署步骤见下文。
 
 ## 部署步骤
 
@@ -189,7 +164,7 @@ Genie 本身会重新创建会话，Teams 中发送“刚才那个结果呢？�
 
 创建一个 Serverless SQL Warehouse：
 
-- 名称：`Teams Demo SQL Warehouse`
+- 名称：`<sql-warehouse-name>`
 - 大小：`2X-Small`
 - 自动停止：10 分钟
 - 最小/最大集群数：1
@@ -202,10 +177,10 @@ Genie 本身会重新创建会话，Teams 中发送“刚才那个结果呢？�
 
 1. 选择要让 Genie 查询的 Unity Catalog 表。
 2. 不建议直接依赖只读系统样例 catalog。将 Demo 数据放到自己管理的 catalog/schema。
-3. 确认目标 catalog/schema 已存在，并使用有权限的 SQL Warehouse 执行下面的示例。`databricksdemo` 是 Demo 自建 catalog。
+3. 确认目标 catalog/schema 已存在，并使用有权限的 SQL Warehouse 执行下面的示例。将 `<catalog>`、`<schema>` 和 `<table>` 替换为自己管理的目标名称，保留 SQL 标识符外围的反引号。
 
 ```sql
-CREATE TABLE IF NOT EXISTS databricksdemo.default.nyctaxi_trips AS
+CREATE TABLE IF NOT EXISTS `<catalog>`.`<schema>`.`<table>` AS
 SELECT * FROM samples.nyctaxi.trips;
 ```
 
@@ -215,7 +190,7 @@ SELECT * FROM samples.nyctaxi.trips;
 
 1. 在 Databricks 中打开 Genie。
 2. 创建 Space 并选择 SQL Warehouse。
-3. 添加 `databricksdemo.default.nyctaxi_trips` 为数据源。
+3. 添加 `<catalog>.<schema>.<table>` 为数据源。
 4. 添加清晰的数据说明和示例问题。
 5. 记录 Space ID。
 
@@ -263,13 +238,13 @@ SELECT * FROM samples.nyctaxi.trips;
    2. 使用具有对象所有者、`MANAGE` 或 metastore admin 权限的账号执行以下语句，将占位符替换为 service principal 的 application ID：
 
       ```sql
-      GRANT USE CATALOG ON CATALOG databricksdemo
+      GRANT USE CATALOG ON CATALOG `<catalog>`
       TO `<service-principal-application-id>`;
 
-      GRANT USE SCHEMA ON SCHEMA databricksdemo.default
+      GRANT USE SCHEMA ON SCHEMA `<catalog>`.`<schema>`
       TO `<service-principal-application-id>`;
 
-      GRANT SELECT ON TABLE databricksdemo.default.nyctaxi_trips
+      GRANT SELECT ON TABLE `<catalog>`.`<schema>`.`<table>`
       TO `<service-principal-application-id>`;
       ```
 
@@ -294,7 +269,7 @@ OAuth secret 只在创建时显示一次。不要写入代码、Git、README、T
 5. 部署完成后打开该 Azure Bot，记录其 user-assigned managed identity 的以下值：
    - **Client ID**：后续用作 `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID` 和 Teams manifest 的 `bots[].botId`。
    - **Resource ID**：用于确认和附加正确的托管身份。
-   - **Tenant ID**：记录 Bot 身份所在租户，供核对 Azure 资源和权限使用；当前 SDK 的用户分配托管身份配置无需设置旧 `MicrosoftTenantId`。
+   - **Tenant ID**：记录 Bot 身份所在租户，供核对 Azure 资源和权限及 Azure CLI 登录使用。
 6. 在 Azure Bot 左侧菜单中打开 **Channels**。
 7. 选择 **Microsoft Teams**，接受服务条款，根据组织策略选择商业版 Teams，然后单击 **Apply** 或 **Save**。
 8. 确认 Microsoft Teams channel 的状态为 `Succeeded`。
@@ -303,7 +278,7 @@ Azure Bot 和 App Service 必须使用同一个 user-assigned managed identity�
 
 ##### 获取 Teams manifest 所需的 Bot ID
 
-1. 在 Azure Portal 打开自己的 Azure Bot 资源，例如 `botservicedatabricks`。
+1. 在 Azure Portal 打开自己的 Azure Bot 资源 `<bot-name>`。
 2. 进入 **Settings** > **Configuration**，复制 **Microsoft App ID**。该值就是 Teams manifest 中的 `bots[].botId`，不是 Azure Bot 的资源名称或 Resource ID。
 3. 当前 Bot 类型为 `UserAssignedMSI`，因此该值也等于 Bot 使用的用户分配托管身份的 **Client ID**。可打开该身份的 **Overview** 页面核对；不要复制 **Object / Principal ID** 或 **Tenant ID**。
 4. 在第 6 节将这个值填入 App Service 的 `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID`，并在第 8 节填入 Teams manifest 的 `bots[].botId`。
@@ -324,7 +299,7 @@ Azure Bot 的 Microsoft App ID
 1. 在 Azure Portal 中搜索并打开 **App Services**，单击 **Create** > **Web App**。
 2. 在 **Basics** 页面填写：
    - **Subscription** 和 **Resource group**：建议与 Azure Bot 相同。
-   - **Name**：输入全局唯一的名称，例如 `botservicedatabricks-app`。该名称会成为默认域名的一部分。
+   - **Name**：输入全局唯一的名称，本文用 `<app-service-name>` 表示。该名称会成为默认域名的一部分。
    - **Publish**：选择 **Code**。
    - **Runtime stack**：选择 **Python 3.13**。
    - **Operating System**：选择 **Linux**。
@@ -364,12 +339,6 @@ Azure Bot 的 Microsoft App ID
 https://<app-service-name>.azurewebsites.net/api/messages
 ```
 
-例如，本项目示例为：
-
-```text
-https://botservicedatabricks-app.azurewebsites.net/api/messages
-```
-
 5. 单击 **Apply** 或 **Save**。
 
 Messaging endpoint 必须使用公网 HTTPS 地址，并以 `/api/messages` 结尾。不要填写 App Service 的 SCM/Kudu 地址，也不要在结尾额外添加 `/`。
@@ -397,10 +366,23 @@ python3 app.py
 
 在 App Service 的 **Settings** > **Environment variables** > **App settings** 中添加下列设置（部分 Portal 版本位于 **Configuration**），保存并应用更改。保存后应用可能重启；不要只在本地终端设置变量而遗漏 Azure 端配置。
 
+当前 Genie 主链路的完整配置模板如下，请将占位符替换为自己的实际值：
+
+```text
+CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID=<botid>
+CONNECTIONS__SERVICE_CONNECTION__SETTINGS__AUTHTYPE=UserManagedIdentity
+DATABRICKS_HOST=https://<workspace-host>
+DATABRICKS_AUTH_TYPE=oauth-m2m
+DATABRICKS_CLIENT_ID=<databricks-service-principal-client-id>
+DATABRICKS_CLIENT_SECRET=<databricks-oauth-secret-or-key-vault-reference>
+GENIE_SPACE_ID=<genie-space-id>
+SCM_DO_BUILD_DURING_DEPLOYMENT=True
+```
+
 | 变量 | 说明 |
 | --- | --- |
 | `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID` | Azure Bot 托管身份 Client ID，必须等于 Bot Microsoft App ID 和 manifest 的 `bots[].botId` |
-| `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__AUTHTYPE` | `UserManagedIdentity`，注意不是旧 SDK 的 `UserAssignedMSI` |
+| `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__AUTHTYPE` | `UserManagedIdentity`，这是 SDK 的认证类型，不是 Azure Bot 资源类型 |
 | `DATABRICKS_HOST` | Databricks workspace URL，不带 `/api` |
 | `DATABRICKS_AUTH_TYPE` | `oauth-m2m` |
 | `DATABRICKS_CLIENT_ID` | Databricks service principal client ID |
@@ -419,7 +401,7 @@ python3 app.py
 
 生产 `/api/messages` 不允许 `ANONYMOUS_ALLOWED=True`。用户分配托管身份不需要 Bot 的 client secret；不能把 `DATABRICKS_CLIENT_SECRET` 填到 Bot service connection 中。Python SDK 的托管身份认证是 single-tenant 配置，跨租户使用仍需单独验证。
 
-`DATABRICKS_AUTH_TYPE=oauth-m2m` 必须显式设置：代码默认值不是 M2M，遗漏时可能进入 PAT 或托管身份兼容路径。当前方案不需要设置 `DATABRICKS_TOKEN`、`DATABRICKS_AZURE_RESOURCE_ID`、`DATABRICKS_AZURE_CLIENT_ID` 或 `ConnectionName`；不要沿用旧示例的凭据配置。App Service 默认不会自动加载本地 `.env`。
+`DATABRICKS_AUTH_TYPE=oauth-m2m` 必须显式设置：代码默认值不是 M2M，遗漏时可能进入 PAT 或托管身份兼容路径。App Service 默认不会自动加载本地 `.env`。
 
 推荐通过 Key Vault reference 提供 `DATABRICKS_CLIENT_SECRET`，其运行身份授权和 `keyVaultReferenceIdentity` 配置见“权限”。也可在受控 Demo 中保存为 App Service setting，但必须限制可读取应用设置的管理权限并定期轮换。
 
@@ -428,8 +410,8 @@ python3 app.py
 以下命令部署到第 5 节**已创建的 Web App**，不重新创建计划或更改 SKU。先在项目根目录登录并选择正确订阅：
 
 ```bash
-az login --tenant <azure-tenant-id>
-az account set --subscription <subscription-id>
+az login --tenant "<tenantid>"
+az account set --subscription "<subid>"
 ```
 
 在项目根目录进入 [`teams-bot`](teams-bot)，生成代码 ZIP 并部署：
@@ -450,8 +432,8 @@ with ZipFile("bot-code.zip", "w", ZIP_DEFLATED) as archive:
 PY
 
 az webapp deploy \
-  --resource-group <resource-group> \
-  --name <web-app-name> \
+  --resource-group "<resource-group>" \
+  --name "<app-service-name>" \
   --src-path bot-code.zip \
   --type zip \
   --restart true \
@@ -470,7 +452,7 @@ az webapp deploy \
 
 完成后查看部署日志和 **Log stream**，确认构建成功、依赖安装成功、`python3 app.py` 启动且没有认证配置异常。若 CLI 登录不能使用浏览器，可按组织允许的方式使用设备码登录。不要提交生成的代码 ZIP；上传完成后可自行删除本地 `bot-code.zip`。
 
-发布会重启服务并清空进程内存中的历史。SDK 升级不要求重建 Azure Bot；发布后按[验证清单](#验证清单)验证接口和真实问答。
+发布会重启服务并清空进程内存中的历史。仅更新 Bot 代码不要求重建 Azure Bot；发布后按[验证清单](#验证清单)验证接口和真实问答。
 
 ### 8. 上传 Teams 应用
 
@@ -494,7 +476,7 @@ az webapp deploy \
   "id": "<teams-app-guid>",
   "bots": [
     {
-      "botId": "<azure-bot-microsoft-app-id>",
+      "botId": "<botid>",
       "scopes": ["team", "groupChat", "personal"]
     }
   ],
@@ -502,7 +484,7 @@ az webapp deploy \
 }
 ```
 
-以上只展示需核对的字段，不是完整 manifest；请保留原文件的其他必需字段。示例中现有的 `5e475f35-1f84-4e59-ae75-eeb1d93460e9` 是 Demo 配置，部署自己的 Bot 时不能原样照搬。
+以上只展示需核对的字段，不是完整 manifest；请保留原文件的其他必需字段。将 `<botid>` 替换为自己的 Azure Bot Microsoft App ID，不能原样照搬仓库 manifest 中的示例配置。README 的占位符不会自动修改 manifest 或现有部署。
 
 **Python 代码不需要硬编码 Bot ID：** [`config.py`](teams-bot/config.py) 使用 Agents SDK 的配置加载器读取 service connection；[`app.py`](teams-bot/app.py) 使用它初始化 MSAL 连接管理和 JWT 认证。因此部署自己的 Bot 时只需更新 manifest 和 App Service 应用设置，不需要修改这些 Python 文件。
 
@@ -543,10 +525,10 @@ manifest 已支持：
 
 ## 当前主链路与自定义 Agent
 
-仓库中的 [`databricks-agent`](databricks-agent) 包含一个可选 MLflow `ResponsesAgent` 示例，部署脚本中的默认注册目标为：
+仓库中的 [`databricks-agent`](databricks-agent) 包含一个可选 MLflow `ResponsesAgent` 示例，部署前需要修改脚本中的模型注册目标，路径格式为：
 
 ```text
-databricksdemo.default.teams_demo_agent
+<catalog>.<schema>.<model-name>
 ```
 
 仅存在代码不代表模型已经在你的工作区注册或部署。该示例的 Genie ID、Warehouse ID 和模型名仍硬编码为 Demo 值，且 [`deploy.py`](databricks-agent/deploy.py) 声明下游资源 `on_behalf_of_user=True`。它可用于学习模型注册与部署，但不是已验证兼容共享 M2M 的替代主链路。
@@ -628,7 +610,7 @@ databricksdemo.default.teams_demo_agent
 4. Azure Bot Microsoft App ID、App Service `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID`、已附加托管身份 Client ID 和 ZIP 内 `bots[].botId` 一致；SDK 的 `AUTHTYPE=UserManagedIdentity`。
 5. App Service 已保存完整 M2M 配置，且 `GENIE_SPACE_ID` 属于该 `DATABRICKS_HOST` 对应工作区。
 6. 服务主体能直接调用 Genie 并获得文本答案，排除 OAuth、Space 和数据授权问题。
-7. 确认 Teams 应用安装在正确范围，发送完整问题；如果只升级 SDK，Bot ID、域名和 scopes 都不变，可直接使用原安装，不必重新打包。
+7. 确认 Teams 应用安装在正确范围，发送完整问题；如果只更新 Bot 代码，Bot ID、域名和 scopes 都不变，可直接使用原安装，不必重新打包。
 8. 在冷启动及连续提问时观察错误和延迟，并检查日志是否包含对应请求。独立问题成功不等于多轮追问、并发和跨租户场景已验证。
 
 ### 接口检查
@@ -678,10 +660,10 @@ PY
 
 ```text
 问题：How many trips are in the dataset?
-答案：The dataset `databricksdemo.default.nyctaxi_trips` contains **21,932** trips.
+答案：The dataset `<catalog>.<schema>.<table>` contains **21,932** trips.
 ```
 
-答案由 Genie 生成，具体措辞可能不同。请用同一张表的 `SELECT COUNT(*)` 核对自己环境的结果，不要把 `21,932` 写成其他数据集的固定预期值。
+上述记录的表名已替换为占位符。答案由 Genie 生成，具体措辞可能不同。请用同一张表的 `SELECT COUNT(*)` 核对自己环境的结果，不要把 `21,932` 写成其他数据集的固定预期值。
 
 ### 本地开发与测试
 
@@ -742,7 +724,7 @@ Genie 查询可能超过上游 HTTP 等待时间。现有代码没有持久化�
 
 ### Bot 身份验证失败 / 无法获取托管身份令牌
 
-核对 Azure Bot 的 Microsoft App ID、SDK 配置中的 `CLIENTID`、`AUTHTYPE=UserManagedIdentity` 和已附加身份；不要误用 Object ID 或 Databricks Client ID。如果日志提示 `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__* is required`，说明还没有迁移旧 Bot 环境变量。本地机器通常无法获取 App Service 托管身份令牌，因此本地启动 Python 进程不等于能通过完整 Teams 认证。
+核对 Azure Bot 的 Microsoft App ID、SDK 配置中的 `CLIENTID`、`AUTHTYPE=UserManagedIdentity` 和已附加身份；不要误用 Object ID 或 Databricks Client ID。如果日志提示 `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__* is required`，说明缺少必需的 SDK 配置，请按第 6 节补齐并保存 App Service 应用设置。本地机器通常无法获取 App Service 托管身份令牌，因此本地启动 Python 进程不等于能通过完整 Teams 认证。
 
 ### 修改 manifest 后仍连到旧 Bot
 
@@ -796,5 +778,4 @@ teams-databricks-bot-service/
 - [Databricks Teams Agent 集成参考（注意与当前 M2M 方案的区别）](https://learn.microsoft.com/zh-cn/azure/databricks/agents/custom-agents/teams-agent)
 - [Databricks OAuth M2M 认证](https://learn.microsoft.com/azure/databricks/dev-tools/auth/oauth-m2m)
 - [Azure App Service Plan 与计费](https://learn.microsoft.com/azure/app-service/overview-hosting-plans)
-- [Microsoft 365 Agents SDK Python 迁移指南](https://learn.microsoft.com/microsoft-365/agents-sdk/bf-migration-python)
 - [Agents SDK Python 认证配置](https://learn.microsoft.com/microsoft-365/agents-sdk/configure-authentication-msal?tabs=python)

@@ -9,7 +9,7 @@
 | [agent.py](agent.py) | `GENIE_SPACE_ID` | 修改为自己的 Genie Space ID |
 | [deploy.py](deploy.py) | `GENIE_SPACE_ID` | 必须与 Agent 中的值一致 |
 | [deploy.py](deploy.py) | `SQL_WAREHOUSE_ID` | 修改为该 Space 使用的 Warehouse ID |
-| [deploy.py](deploy.py) | `UC_MODEL_NAME` | 默认 `databricksdemo.default.teams_demo_agent`，改为自己的 Unity Catalog 模型注册路径 |
+| [deploy.py](deploy.py) | `UC_MODEL_NAME` | 改为自己的 Unity Catalog 模型注册路径，格式为 `<catalog>.<schema>.<model-name>`；代码中的硬编码示例值不会随 README 占位符自动更新 |
 | [deploy.py](deploy.py) | MLflow experiment 路径 | 默认 `/Shared/teams-demo-agent`，确认部署账号可以创建或写入该实验 |
 
 目标 catalog/schema 必须存在，部署账号必须有模型注册、实验写入、Model Serving 部署及相关资源访问权限。部署会产生计算或存储费用；`scale_to_zero=True` 不代表没有费用。
