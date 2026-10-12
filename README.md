@@ -676,4 +676,3 @@ teams-databricks-bot-service/
 - [Databricks Teams Agent 集成参考（注意与当前 M2M 方案的区别）](https://learn.microsoft.com/zh-cn/azure/databricks/agents/custom-agents/teams-agent)
 - [Databricks OAuth M2M 认证](https://learn.microsoft.com/azure/databricks/dev-tools/auth/oauth-m2m)
 - [Azure App Service Plan 与计费](https://learn.microsoft.com/azure/app-service/overview-hosting-plans)
-- [Bot Framework SDK 生命周期与迁移参考](https://learn.microsoft.com/azure/bot-service/bot-service-resources-links)
