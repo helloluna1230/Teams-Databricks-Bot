@@ -62,7 +62,7 @@ flowchart LR
 ## 组件职责
 
 | 组件 | 作用 |
-| --- | --- | --- |
+| --- | --- |
 | Microsoft Teams | 提供个人聊天、群聊和团队频道入口；当前 Genie 路径发送文本，可选 Model Serving 工具调用路径可生成 Adaptive Card |
 | Teams 应用 manifest | 声明应用名称、Bot ID、可用范围和有效域名，供 Teams 安装与识别应用 |
 | Azure Bot Service | 注册 Microsoft Teams channel，将 Teams Activity 转发到 `/api/messages`，并把 Bot 回复送回 Teams |
