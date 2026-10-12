@@ -1,5 +1,7 @@
-botbuilder-integration-aiohttp>=4.17.0
-botbuilder-dialogs>=4.16.2
+microsoft-agents-hosting-core==1.8.0
+microsoft-agents-hosting-aiohttp==1.8.0
+microsoft-agents-activity==1.8.0
+microsoft-agents-authentication-msal==1.8.0
 azure-identity>=1.17.0
 databricks-sdk[openai]==0.58.0
 databricks-ai-bridge

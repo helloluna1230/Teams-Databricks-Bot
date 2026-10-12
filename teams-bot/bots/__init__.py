@@ -1,7 +1,6 @@
 # Copyright © Databricks, Inc. All rights reserved.
 # Licensed under the MIT License.
 
-from .dialog_bot import DialogBot
-from .auth_bot import AuthBot
+from .databricks_bot import DatabricksBot
 
-__all__ = ["DialogBot", "AuthBot"]
+__all__ = ["DatabricksBot"]

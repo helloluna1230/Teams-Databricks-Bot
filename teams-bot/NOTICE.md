@@ -22,6 +22,14 @@ Copyright (c) Microsoft Corporation
 
 License - https://github.com/microsoft/botbuilder-python/blob/main/LICENSE
 
+Legacy Bot Framework code attribution is retained above. The current runtime uses:
+
+**microsoft/Agents-for-python** - https://github.com/microsoft/Agents-for-python
+
+Copyright (c) Microsoft Corporation
+
+License - https://github.com/microsoft/Agents-for-python/blob/main/LICENSE
+
 ________________
 This Software contains code from the following open source projects, licensed under the BSD 3-clause license:
 
